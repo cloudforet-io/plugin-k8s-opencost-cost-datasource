@@ -1,5 +1,7 @@
 from spaceone.core.manager import BaseManager
 
+from plugin.connector.mimir_connector import MimirConnector
+
 
 class DataSourceManager(BaseManager):
     @staticmethod
@@ -23,3 +25,10 @@ class DataSourceManager(BaseManager):
                 ],
             }
         }
+
+    @staticmethod
+    def verify_plugin(
+        domain_id: str, options: dict, secret_data: dict, schema: str = None
+    ) -> None:
+        mimir_connector = MimirConnector()
+        mimir_connector.create_session(domain_id, options, secret_data, schema)
