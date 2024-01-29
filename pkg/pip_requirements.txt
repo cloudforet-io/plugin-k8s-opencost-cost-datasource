@@ -1,5 +1,3 @@
 spaceone-api
 chardet
-numpy
-pandas
 pre-commit
