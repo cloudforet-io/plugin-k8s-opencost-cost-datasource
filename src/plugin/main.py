@@ -2,6 +2,8 @@ from typing import Generator
 
 from spaceone.cost_analysis.plugin.data_source.lib.server import DataSourcePluginServer
 
+from plugin.manager.data_source_manager import DataSourceManager
+
 app = DataSourcePluginServer()
 
 
@@ -20,7 +22,12 @@ def data_source_init(params: dict) -> dict:
             'metadata': 'dict'
         }
     """
-    pass
+    domain_id = params["domain_id"]
+    options = params["options"]
+
+    data_source_mgr: DataSourceManager = DataSourceManager()
+
+    return data_source_mgr.init_response(domain_id, options)
 
 
 @app.route("DataSource.verify")
