@@ -45,7 +45,15 @@ def data_source_verify(params: dict) -> None:
     Returns:
         None
     """
-    pass
+    domain_id = params["domain_id"]
+    options = params["options"]
+    secret_data = params["secret_data"]
+
+    schema = params.get("schema", None)
+
+    data_source_mgr: DataSourceManager = DataSourceManager()
+
+    data_source_mgr.verify_plugin(domain_id, options, secret_data, schema)
 
 
 @app.route("Job.get_tasks")
