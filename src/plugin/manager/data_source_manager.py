@@ -1,6 +1,6 @@
 from spaceone.core.manager import BaseManager
 
-from plugin.connector.mimir_connector import MimirConnector
+from ..connector.mimir_connector import MimirConnector
 
 
 class DataSourceManager(BaseManager):

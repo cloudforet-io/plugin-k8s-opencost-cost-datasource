@@ -2,7 +2,7 @@ from typing import Generator
 
 from spaceone.cost_analysis.plugin.data_source.lib.server import DataSourcePluginServer
 
-from plugin.manager.data_source_manager import DataSourceManager
+from .manager.data_source_manager import DataSourceManager
 
 app = DataSourcePluginServer()
 
