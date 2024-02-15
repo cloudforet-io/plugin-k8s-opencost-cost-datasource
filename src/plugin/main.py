@@ -2,6 +2,7 @@ from typing import Generator
 
 from spaceone.cost_analysis.plugin.data_source.lib.server import DataSourcePluginServer
 
+from .manager.cost_manager import CostManager
 from .manager.data_source_manager import DataSourceManager
 from .manager.job_manager import JobManager
 
@@ -86,7 +87,7 @@ def job_get_tasks(params: dict) -> dict:
     start = params.get("start", None)
     last_synchronized_at = params.get("last_synchronized_at", None)
 
-    job_mgr = JobManager()
+    job_mgr: JobManager = JobManager()
 
     return job_mgr.get_tasks(
         domain_id, options, secret_data, schema, start, last_synchronized_at
@@ -123,4 +124,13 @@ def cost_get_data(params: dict) -> Generator[dict, None, None]:
             'billed_date': 'str'
         }
     """
-    pass
+    domain_id = params["domain_id"]
+    options = params["options"]
+    secret_data = params["secret_data"]
+
+    schema = params.get("schema", None)
+    task_options = params.get("task_options", None)
+
+    cost_mgr: CostManager = CostManager()
+
+    return cost_mgr.get_data(domain_id, options, secret_data, schema, task_options)
