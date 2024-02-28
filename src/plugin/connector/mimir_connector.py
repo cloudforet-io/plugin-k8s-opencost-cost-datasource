@@ -1,5 +1,5 @@
 import logging
-from typing import Generator, Union
+from typing import Generator, List, Union
 
 import pandas as pd
 import requests
@@ -43,27 +43,35 @@ class MimirConnector(BaseConnector):
 
     def get_promql_response(
         self, promql_query_range: str, start: str
-    ) -> Union[list[dict], None]:
+    ) -> Union[List[dict], None]:
         start_unix_timestamp, end_unix_timestamp = self._get_unix_timestamp(start)
 
-        response = requests.get(
-            promql_query_range,
-            headers=self.mimir_headers,
-            params={
-                "query": self._create_promql(start),
-                "start": start_unix_timestamp,
-                "end": end_unix_timestamp,
-                "step": "1d",
-            },
-        )
-
         try:
+            response = requests.get(
+                promql_query_range,
+                headers=self.mimir_headers,
+                params={
+                    "query": self._create_promql(start),
+                    "start": start_unix_timestamp,
+                    "end": end_unix_timestamp,
+                    "step": "1d",
+                },
+            )
+
             response.raise_for_status()
+
             return response.json().get("data", {}).get("result")
         except requests.HTTPError as http_err:
             _LOGGER.error(f"[get_promql_response] HTTP error occurred: {http_err}")
-            _LOGGER.error(response.text)
-            return None
+            print(
+                """
+                [PromQL Accuracy Error] Modify accuracy of the data to adjust precision:
+                    Decrease (e.g., to 1m): Enhances accuracy. It's typically not recommended to set it below the Prometheus scraping interval (1m by default)
+                    Increase Enhances the performance of the query.
+                """
+            )
+        except Exception as err:
+            _LOGGER.error(f"[get_promql_response] error occurred: {err}")
 
     @staticmethod
     def _get_unix_timestamp(start: str) -> (str, str):
@@ -135,16 +143,28 @@ class MimirConnector(BaseConnector):
                             "",
                             ""
                         )
-                    )[{days}d:10m]
+                        or
+                        label_replace (
+                            (
+                                avg by (persistentvolume, cluster, node, namespace, pod) (pod_pvc_allocation)
+                                * on (persistentvolume) group_left ()
+                                avg by (persistentvolume) (kube_persistentvolume_status_phase{{phase="Available"}})
+                            ),
+                            "type",
+                            "Storage",
+                            "",
+                            ""
+                        )
+                    )[{days}d:1h]
                 )
                 /
-                scalar(count_over_time(vector(1)[{days}d:10m]))
+                scalar(count_over_time(vector(1)[{days}d:1h]))
                 * 24 * {days}
             )
         """
 
     @staticmethod
-    def get_cost_data(promql_response: list[dict]) -> Generator[list[dict], None, None]:
+    def get_cost_data(promql_response: List[dict]) -> Generator[List[dict], None, None]:
         _LOGGER.debug(f"[get_cost_data] promql_response: {promql_response}")
         # Paginate
         page_count = int(len(promql_response) / _PAGE_SIZE) + 1

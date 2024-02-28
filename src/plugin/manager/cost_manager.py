@@ -1,5 +1,5 @@
 import logging
-from typing import Generator, Union
+from typing import Generator, List, Union
 
 import pandas as pd
 from spaceone.core.manager import BaseManager
@@ -74,7 +74,7 @@ class CostManager(BaseManager):
 
         yield {"results": []}
 
-    def _make_cost_data(self, results: list[dict]) -> dict:
+    def _make_cost_data(self, results: List[dict]) -> dict:
         costs_data = []
         for result in results:
             for i in range(len(result["values"])):
@@ -95,7 +95,7 @@ class CostManager(BaseManager):
                         "usage_quantity": result.get("usage_quantity", 0),
                         "usage_type": result.get("usage_type"),
                         "usage_unit": result.get("usage_unit"),
-                        "provider": "OpenCost",
+                        "provider": "Kubernetes",
                         "region_code": region_code,
                         "product": result.get("product"),
                         "billed_date": result["billed_date"],
@@ -136,7 +136,7 @@ class CostManager(BaseManager):
     def _make_additional_info(result: dict) -> dict:
         additional_info = {
             "Cluster": result["metric"].get("cluster", ""),
-            "Node": result["metric"].get("node", ""),
+            "Node": result["metric"].get("node", "Unknown"),
             "Namespace": result["metric"].get("namespace", ""),
             "Pod": result["metric"].get("pod", ""),
             # "Type": result["metric"]["type"],
