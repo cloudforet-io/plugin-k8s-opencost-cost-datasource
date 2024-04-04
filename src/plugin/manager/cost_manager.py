@@ -6,8 +6,9 @@ from spaceone.core.manager import BaseManager
 from spaceone.cost_analysis.error import ERROR_REQUIRED_PARAMETER
 
 from ..connector.mimir_connector import MimirConnector
+from ..connector.spaceone_connector import SpaceONEConnector
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("spaceone")
 
 _REQUIRED_FIELDS = [
     "cost",
@@ -51,7 +52,8 @@ AWS_REGION_MAP = {
 class CostManager(BaseManager):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.mimir_connector = MimirConnector()
+        self.mimir_connector: MimirConnector = MimirConnector()
+        self.spaceone_connector: SpaceONEConnector = SpaceONEConnector()
 
     def get_data(
         self,
@@ -61,20 +63,74 @@ class CostManager(BaseManager):
         schema: Union[str, None],
         task_options: Union[dict, None],
     ) -> Generator[dict, None, None]:
-        self.mimir_connector.create_session(domain_id, options, secret_data, schema)
+        self.spaceone_connector.init_client(options, secret_data, schema)
 
-        promql_query_range = f"{secret_data['mimir_endpoint']}/api/v1/query_range"
-        promql_response = self.mimir_connector.get_promql_response(
-            promql_query_range, task_options["start"]
-        )
+        start = task_options.get("start")
+        service_account_id = task_options.get("service_account_id")
 
-        response_stream = self.mimir_connector.get_cost_data(promql_response)
+        self._check_resource_group(domain_id, options)
+
+        try:
+            promql_query_range = f"{secret_data['mimir_endpoint']}/api/v1/query_range"
+            promql_response = self.mimir_connector.get_promql_response(
+                promql_query_range, start, service_account_id, secret_data
+            )
+
+            # _LOGGER.debug(f"PromQL Response: {promql_response}")
+
+            if promql_response:
+                response_stream = self.mimir_connector.get_cost_data(promql_response)
+
+                yield from self._process_response_stream(
+                    response_stream, service_account_id
+                )
+            elif promql_response is None:
+                _LOGGER.error(
+                    "[get_data] Setting the accuracy to a smaller value (1m) can lead to overload issues when executing PromQL queries in Mimir, potentially resulting in errors."
+                )
+            else:
+                _LOGGER.error(
+                    "[get_data] The SpaceONE Agent has not been installed yet. Please install the agent on your cluster."
+                )
+                yield {"results": []}
+        except Exception as e:
+            _LOGGER.error("Error processing data: %s", str(e), exc_info=True)
+            yield {"results": []}
+
+    def _check_resource_group(self, domain_id: str, options: dict):
+        if options.get("resource_group", None) == "DOMAIN":
+            response = self.spaceone_connector.list_service_accounts()
+            self._has_agent_service_account(response, domain_id)
+        elif options.get("resource_group", None) == "WORKSPACE":
+            workspace_id = options.get("workspace_id", None)
+            response = self.spaceone_connector.list_service_accounts(workspace_id)
+            self._has_agent_service_account(response, workspace_id)
+
+    @staticmethod
+    def _has_agent_service_account(
+        response: dict,
+        domain_id: str = None,
+        workspace_id: str = None,
+    ):
+        if not response.get("total_count"):
+            if domain_id:
+                _LOGGER.debug(
+                    f"No Kubernetes agent service account: domain_id = {domain_id}"
+                )
+            else:
+                _LOGGER.debug(
+                    f"No Kubernetes agent service account: workspace_id = {workspace_id}"
+                )
+            yield {"results": []}
+
+    def _process_response_stream(
+        self, response_stream: Generator, service_account_id: str
+    ) -> Generator[dict, None, None]:
         for results in response_stream:
-            yield self._make_cost_data(results)
-
+            yield self._make_cost_data(results, service_account_id)
         yield {"results": []}
 
-    def _make_cost_data(self, results: List[dict]) -> dict:
+    def _make_cost_data(self, results: List[dict], x_scope_orgid: str) -> dict:
         costs_data = []
         for result in results:
             for i in range(len(result["values"])):
@@ -83,23 +139,19 @@ class CostManager(BaseManager):
                     result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
 
-                self._check_required_fields(result)
-
-                additional_info = self._make_additional_info(result)
+                additional_info = self._make_additional_info(result, x_scope_orgid)
                 region_code = self._get_region_code(result)
-                # data = self._make_data(result)
 
                 try:
                     data = {
-                        "cost": result["cost"],
+                        "cost": result.get("cost"),
                         "usage_quantity": result.get("usage_quantity", 0),
-                        "usage_type": result.get("usage_type"),
+                        "usage_type": result["metric"]["type"],
                         "usage_unit": result.get("usage_unit"),
-                        "provider": "Kubernetes",
+                        "provider": "kubernetes",
                         "region_code": region_code,
                         "product": result.get("product"),
                         "billed_date": result["billed_date"],
-                        # "data": result.get("data", {}),
                         "additional_info": additional_info,
                         "tags": result.get("tags", {}),
                     }
@@ -133,22 +185,18 @@ class CostManager(BaseManager):
                 raise ERROR_REQUIRED_PARAMETER(key=field)
 
     @staticmethod
-    def _make_additional_info(result: dict) -> dict:
+    def _make_additional_info(result: dict, service_account_id: str) -> dict:
+        print(result)
         additional_info = {
             "Cluster": result["metric"].get("cluster", ""),
-            "Node": result["metric"].get("node", "Unknown"),
+            "Node": result["metric"].get("node", "Unmounted PVs"),
             "Namespace": result["metric"].get("namespace", ""),
             "Pod": result["metric"].get("pod", ""),
-            # "Type": result["metric"]["type"],
+            "Container": result["metric"].get("container", "Unmounted"),
+            "X-Scope-OrgID": service_account_id,
         }
 
         return additional_info
-
-    # @staticmethod
-    # def _make_data(result: dict) -> dict:
-    #     data = {"Change Percent": float(result.get("Change Percent", 0.0))}
-    #
-    #     return data
 
     @staticmethod
     def _get_region_code(result: dict) -> str:
@@ -156,8 +204,8 @@ class CostManager(BaseManager):
         if node:
             region = node.split(".")[1]
         else:
-            region = "Unknown"
+            region = "Unknown (Unmounted PVs)"
 
-        region_name = AWS_REGION_MAP.get(region, "Unknown")
+        region_name = AWS_REGION_MAP.get(region, "Unknown (Unmounted PVs)")
 
         return region_name
