@@ -7,7 +7,7 @@ from pandas._libs.tslibs.offsets import MonthEnd
 from spaceone.core.connector import BaseConnector
 from spaceone.core.error import ERROR_REQUIRED_PARAMETER
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("spaceone")
 _PAGE_SIZE = 1000
 
 __all__ = ["MimirConnector"]
@@ -22,50 +22,67 @@ class MimirConnector(BaseConnector):
             "Content-Type": "application/json",
             "X-Scope-OrgID": "",
         }
+        self.mimir_promql = None
 
         self.field_mapper = None
         self.default_vars = None
+        self.client = None
 
     def create_session(
-        self, domain_id: str, options: dict, secret_data: dict, schema: str = None
+        self,
+        domain_id: str,
+        service_account_id: str,
+        options: dict,
+        secret_data: dict,
+        schema: str = None,
     ) -> None:
         if "mimir_endpoint" not in secret_data:
             raise ERROR_REQUIRED_PARAMETER(key="secret_data.mimir_endpoint")
 
-        if "X_Scope_OrgID" not in secret_data:
-            raise ERROR_REQUIRED_PARAMETER(key="secret_data.X_Scope_OrgID")
+        if "promql" not in secret_data:
+            raise ERROR_REQUIRED_PARAMETER(key="secret_data.promql")
 
         self.mimir_endpoint = secret_data["mimir_endpoint"]
-        self.mimir_headers["X-Scope-OrgID"] = secret_data["X_Scope_OrgID"]
+        self.mimir_headers["X-Scope-OrgID"] = service_account_id
+        self.mimir_promql = secret_data["promql"]
 
         self.field_mapper = options.get("field_mapper", None)
         self.default_vars = options.get("default_vars", None)
 
     def get_promql_response(
-        self, promql_query_range: str, start: str
+        self,
+        promql_query_range: str,
+        start: str,
+        service_account_id: str,
+        secret_data: dict,
     ) -> Union[List[dict], None]:
         start_unix_timestamp, end_unix_timestamp = self._get_unix_timestamp(start)
+
+        self.mimir_headers = {
+            "Content-Type": "application/json",
+            "X-Scope-OrgID": service_account_id,
+        }
 
         try:
             response = requests.get(
                 promql_query_range,
                 headers=self.mimir_headers,
                 params={
-                    "query": self._create_promql(start),
+                    "query": secret_data["promql"],
                     "start": start_unix_timestamp,
                     "end": end_unix_timestamp,
                     "step": "1d",
                 },
             )
 
-            response.raise_for_status()
+            response.raise_for_status()  # Raise Errors if status code >= 400
 
-            return response.json().get("data", {}).get("result")
+            result = response.json().get("data", {}).get("result")
+            return result
         except requests.HTTPError as http_err:
             _LOGGER.error(f"[get_promql_response] HTTP error occurred: {http_err}")
-            print(
-                """
-                [PromQL Accuracy Error] Modify accuracy of the data to adjust precision:
+            _LOGGER.error(
+                """[get_promql_response] Modify accuracy of the data to adjust precision:
                     Decrease (e.g., to 1m): Enhances accuracy. It's typically not recommended to set it below the Prometheus scraping interval (1m by default)
                     Increase Enhances the performance of the query.
                 """
@@ -81,92 +98,7 @@ class MimirConnector(BaseConnector):
         return str(start.timestamp()), str(end.timestamp())
 
     @staticmethod
-    def _create_promql(start: str) -> str:
-        days = int((pd.Timestamp(start) + MonthEnd(0)).strftime("%d"))
-
-        return f"""
-            sum by (cluster, node, namespace, pod) (
-                sum_over_time (
-                    (
-                        label_replace (
-                            (
-                                avg by (container, cluster, node, namespace, pod) (container_cpu_allocation)
-                                * on (node) group_left ()
-                                avg by (node) (node_cpu_hourly_cost)
-                            ),
-                            "type",
-                            "CPU",
-                            "",
-                            ""
-                        )
-                        or
-                        label_replace (
-                            (
-                                (
-                                    avg by (container, cluster, node, namespace, pod) (container_memory_allocation_bytes)
-                                    * on (node) group_left ()
-                                    avg by (node) (node_ram_hourly_cost)
-                                )
-                                /
-                                (1024 * 1024 * 1024)
-                            ),
-                            "type",
-                            "RAM",
-                            "",
-                            ""
-                        )
-                        or
-                        label_replace(
-                            (
-                                avg by (container, cluster, node, namespace, pod) (container_gpu_allocation)
-                                * on (node) group_left ()
-                                avg by (node) (node_gpu_hourly_cost)
-                            ),
-                            "type",
-                            "GPU",
-                            "",
-                            ""
-                        )
-                        or
-                        label_replace (
-                            (
-                                (
-                                    avg by (persistentvolume, cluster, node, namespace, pod) (pod_pvc_allocation)
-                                    * on (persistentvolume) group_left ()
-                                    avg by (persistentvolume) (pv_hourly_cost)
-                                )
-                                /
-                                (1024 * 1024 * 1024)
-                            ),
-                            "type",
-                            "PV",
-                            "",
-                            ""
-                        )
-                        or
-                        label_replace (
-                            (
-                                avg by (persistentvolume, cluster, node, namespace, pod) (pod_pvc_allocation)
-                                * on (persistentvolume) group_left ()
-                                avg by (persistentvolume) (kube_persistentvolume_status_phase{{phase="Available"}})
-                            ),
-                            "type",
-                            "Storage",
-                            "",
-                            ""
-                        )
-                    )[{days}d:1h]
-                )
-                /
-                scalar(count_over_time(vector(1)[{days}d:1h]))
-                * 24 * {days}
-            )
-        """
-
-    @staticmethod
     def get_cost_data(promql_response: List[dict]) -> Generator[List[dict], None, None]:
-        _LOGGER.debug(f"[get_cost_data] promql_response: {promql_response}")
-        # Paginate
         page_count = int(len(promql_response) / _PAGE_SIZE) + 1
 
         for page_num in range(page_count):
