@@ -76,8 +76,6 @@ class CostManager(BaseManager):
                 promql_query_range, start, service_account_id, secret_data
             )
 
-            # _LOGGER.debug(f"PromQL Response: {promql_response}")
-
             if promql_response:
                 response_stream = self.mimir_connector.get_cost_data(promql_response)
 
@@ -186,7 +184,6 @@ class CostManager(BaseManager):
 
     @staticmethod
     def _make_additional_info(result: dict, service_account_id: str) -> dict:
-        print(result)
         additional_info = {
             "Cluster": result["metric"].get("cluster", ""),
             "Node": result["metric"].get("node", "Unmounted PVs"),

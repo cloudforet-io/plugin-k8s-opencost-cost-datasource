@@ -89,7 +89,6 @@ class JobManager(BaseManager):
     @staticmethod
     def _generate_tasks(response, start_month):
         end_time = datetime.utcnow()
-
         date_range = pd.date_range(start=start_month, end=end_time, freq="MS").strftime(
             "%Y-%m"
         )
@@ -97,23 +96,27 @@ class JobManager(BaseManager):
         tasks, changed = [], []
         results = response.get("results", [])
         for account_info in results:
-            if account_info.get("app_id", None):
-                for date in date_range:
-                    task_options = {
-                        "service_account_id": account_info["service_account_id"],
-                        "service_account_name": account_info["name"],
-                        "cluster_name": account_info["data"]["cluster_name"],
+            if not account_info.get("app_id", None):
+                continue
+
+            for date in date_range:
+                task_options = {
+                    "service_account_id": account_info["service_account_id"],
+                    "service_account_name": account_info["name"],
+                    "cluster_name": account_info.get("options", "").get(
+                        "cluster_name", ""
+                    ),
+                    "start": date,
+                }
+                tasks.append({"task_options": task_options})
+                changed.append(
+                    {
                         "start": date,
+                        "filter": {
+                            "service_account_id": account_info["service_account_id"]
+                        },
                     }
-                    tasks.append({"task_options": task_options})
-                    changed.append(
-                        {
-                            "start": date,
-                            "filter": {
-                                "service_account_id": account_info["service_account_id"]
-                            },
-                        }
-                    )
+                )
 
         return tasks, changed
 
