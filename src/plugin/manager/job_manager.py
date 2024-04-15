@@ -29,42 +29,75 @@ class JobManager(BaseManager):
         self.spaceone_connector.init_client(options, secret_data, schema)
 
         tasks, changed = [], []
-        if options.get("resource_group", None) == "DOMAIN":
-            response = self.spaceone_connector.list_service_accounts()
+        resource_group = options.get("resource_group", None)
+        if resource_group == "DOMAIN":
+            agents_info = self.spaceone_connector.list_agents()
 
-            tasks, changed = self._get_tasks_changed(
-                response, start, last_synchronized_at, domain_id=domain_id
-            )
-        elif options.get("resource_group", None) == "WORKSPACE":
+            self._check_agent_exist(agents_info, domain_id, None)
+
+            for response in agents_info.get("results", []):
+                sub_tasks, sub_changed = self._get_response_by_agents(
+                    response,
+                    start,
+                    last_synchronized_at,
+                )
+                tasks.extend(sub_tasks)
+                changed.extend(sub_changed)
+
+        elif resource_group == "WORKSPACE":
             workspace_id = options.get("workspace_id", None)
-            response = self.spaceone_connector.list_service_accounts(
-                workspace_id=workspace_id
-            )
+            agents_info = self.spaceone_connector.list_agents(workspace_id=workspace_id)
 
-            tasks, changed = self._get_tasks_changed(
-                response, start, last_synchronized_at, workspace_id=workspace_id
-            )
+            self._check_agent_exist(agents_info, None, workspace_id)
+
+            for response in agents_info.get("results", []):
+                sub_tasks, sub_changed = self._get_response_by_agents(
+                    response,
+                    start,
+                    last_synchronized_at,
+                )
+                tasks.extend(sub_tasks)
+                changed.extend(sub_changed)
 
         _LOGGER.debug(f"Tasks: {tasks}, Changed: {changed}")
         return {"tasks": tasks, "changed": changed}
+
+    @staticmethod
+    def _check_agent_exist(agents_info, domain_id, workspace_id):
+        if not agents_info.get("total_count"):
+            if domain_id:
+                _LOGGER.debug(f"No Service Account's agents: domain_id = {domain_id}")
+            else:
+                _LOGGER.debug(
+                    f"No Service Account's agents: workspace_id = {workspace_id}"
+                )
+            return {"tasks": [], "changed": []}
+
+    def _get_response_by_agents(
+        self,
+        response: dict,
+        start: str,
+        last_synchronized_at: datetime,
+    ):
+        state = response.get("state", "DISABLED")
+        last_accessed_at = response.get("last_accessed_at", None)
+
+        tasks, changed = [], []
+        if state == "ENABLED" and last_accessed_at:
+            tasks, changed = self._get_tasks_changed(
+                response,
+                start,
+                last_synchronized_at,
+            )
+
+        return tasks, changed
 
     def _get_tasks_changed(
         self,
         response: dict,
         start: str,
         last_synchronized_at: datetime,
-        domain_id: str = None,
-        workspace_id: str = None,
     ):
-        if not response.get("total_count"):
-            if domain_id:
-                _LOGGER.debug(f"No Kubernetes service account: domain_id = {domain_id}")
-            else:
-                _LOGGER.debug(
-                    f"No Kubernetes service account: workspace_id = {workspace_id}"
-                )
-            return {"tasks": [], "changed": []}
-
         start_month = self._get_start_month(start, last_synchronized_at)
         tasks, changed = self._generate_tasks(response, start_month)
 
@@ -86,37 +119,29 @@ class JobManager(BaseManager):
 
         return start_time.strftime("%Y-%m")
 
-    @staticmethod
-    def _generate_tasks(response, start_month):
+    def _generate_tasks(self, response, start_month):
         end_time = datetime.utcnow()
         date_range = pd.date_range(start=start_month, end=end_time, freq="MS").strftime(
             "%Y-%m"
         )
 
         tasks, changed = [], []
-        results = response.get("results", [])
-        for account_info in results:
-            if not account_info.get("app_id", None):
-                continue
-
-            for date in date_range:
-                task_options = {
-                    "service_account_id": account_info["service_account_id"],
-                    "service_account_name": account_info["name"],
-                    "cluster_name": account_info.get("options", "").get(
-                        "cluster_name", ""
-                    ),
+        for date in date_range:
+            task_options = {
+                "service_account_id": response["service_account_id"],
+                "service_account_name": self.spaceone_connector.get_service_account(
+                    response["service_account_id"]
+                ).get("name"),
+                "cluster_name": response.get("options").get("cluster_name", ""),
+                "start": date,
+            }
+            tasks.append({"task_options": task_options})
+            changed.append(
+                {
                     "start": date,
+                    "filter": {"service_account_id": response["service_account_id"]},
                 }
-                tasks.append({"task_options": task_options})
-                changed.append(
-                    {
-                        "start": date,
-                        "filter": {
-                            "service_account_id": account_info["service_account_id"]
-                        },
-                    }
-                )
+            )
 
         return tasks, changed
 
