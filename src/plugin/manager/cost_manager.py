@@ -97,15 +97,15 @@ class CostManager(BaseManager):
 
     def _check_resource_group(self, domain_id: str, options: dict):
         if options.get("resource_group", None) == "DOMAIN":
-            response = self.spaceone_connector.list_service_accounts()
-            self._has_agent_service_account(response, domain_id)
+            response = self.spaceone_connector.list_agents()
+            self._has_agent(response, domain_id)
         elif options.get("resource_group", None) == "WORKSPACE":
             workspace_id = options.get("workspace_id", None)
-            response = self.spaceone_connector.list_service_accounts(workspace_id)
-            self._has_agent_service_account(response, workspace_id)
+            response = self.spaceone_connector.list_agents(workspace_id)
+            self._has_agent(response, workspace_id)
 
     @staticmethod
-    def _has_agent_service_account(
+    def _has_agent(
         response: dict,
         domain_id: str = None,
         workspace_id: str = None,

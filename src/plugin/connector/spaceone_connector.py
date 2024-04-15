@@ -62,6 +62,14 @@ class SpaceONEConnector(BaseConnector):
 
         return self.dispatch("ServiceAccount.list", params)
 
+    def list_agents(self, workspace_id: str = None):
+        if not workspace_id:  # resource_group: domain
+            params = {}
+        else:
+            params = {"workspace_id": workspace_id}
+
+        return self.dispatch("Agent.list", params)
+
     def get_service_account(self, service_account_id):
         params = {"service_account_id": service_account_id}
 
