@@ -71,7 +71,7 @@ class MimirConnector(BaseConnector):
                     "query": secret_data["promql"],
                     "start": start_unix_timestamp,
                     "end": end_unix_timestamp,
-                    "step": "1d",
+                    "step": "1h",
                 },
             )
 
