@@ -82,13 +82,12 @@ class CostManager(BaseManager):
                 yield from self._process_response_stream(
                     response_stream, service_account_id
                 )
-            elif promql_response is None:
-                _LOGGER.error(
-                    "[get_data] Setting the accuracy to a smaller value (1m) can lead to overload issues when executing PromQL queries in Mimir, potentially resulting in errors."
-                )
             else:
                 _LOGGER.error(
-                    "[get_data] The SpaceONE Agent has not been installed yet. Please install the agent on your cluster."
+                    "[get_data] The Prometheus query returned no data since your opencost configuration is not ready yet"
+                )
+                _LOGGER.error(
+                    "Or the SpaceONE Agent has not been installed yet. Please install the agent on your cluster."
                 )
                 yield {"results": []}
         except Exception as e:
