@@ -199,10 +199,12 @@ class CostManager(BaseManager):
             "Cluster": result["metric"].get("cluster", ""),
             "Node": result["metric"].get("node", "PVs"),
             "Namespace": result["metric"].get("namespace", ""),
-            "PV": result["metric"].get("persistentvolume", ""),
             "Pod": result["metric"].get("pod", ""),
             "X-Scope-OrgID": service_account_id,
         }
+
+        if pv := result["metric"].get("persistentvolume"):
+            additional_info["PV"] = pv
 
         return additional_info
 
