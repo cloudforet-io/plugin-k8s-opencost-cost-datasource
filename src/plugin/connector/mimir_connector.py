@@ -71,7 +71,7 @@ class MimirConnector(BaseConnector):
                     "query": secret_data["promql"],
                     "start": start_unix_timestamp,
                     "end": end_unix_timestamp,
-                    "step": "1h",
+                    "step": "1d",
                 },
             )
 
@@ -96,6 +96,36 @@ class MimirConnector(BaseConnector):
         end = (pd.Timestamp(start) + MonthEnd(0)).replace(hour=23, minute=59, second=59)
 
         return str(start.timestamp()), str(end.timestamp())
+
+    def get_kubecost_cluster_info(
+        self,
+        service_account_id: str,
+        secret_data: dict,
+    ) -> dict:
+        self.mimir_headers = {
+            "Content-Type": "application/json",
+            "X-Scope-OrgID": service_account_id,
+        }
+        cluster_info_query = f"{secret_data['mimir_endpoint']}/api/v1/query"
+        try:
+            response = requests.get(
+                cluster_info_query,
+                headers=self.mimir_headers,
+                params={
+                    "query": secret_data["cluster_info_query"],
+                },
+            )
+
+            response.raise_for_status()
+
+            result = response.json()
+            return result
+        except requests.HTTPError as http_err:
+            _LOGGER.error(
+                f"[get_kubecost_cluster_info] HTTP error occurred: {http_err}"
+            )
+        except Exception as err:
+            _LOGGER.error(f"[get_kubecost_cluster_info] error occurred: {err}")
 
     @staticmethod
     def get_cost_data(promql_response: List[dict]) -> Generator[List[dict], None, None]:
