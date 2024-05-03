@@ -154,10 +154,20 @@ class CostManager(BaseManager):
             cluster_info.get("data", {}).get("result", [])[0].get("metric", {})
         )
         costs_data = []
+        total_node_cost = 0.0
+        node_cost = 0.0
         for result in results:
             for i in range(len(result["values"])):
                 data = {}
                 result["cost"] = float(result["values"][i][1])
+
+                usage_type = result["metric"].get("type")
+                if usage_type == "total":
+                    result["total_node_cost"] = float(result["values"][i][1])
+                    total_node_cost += result["total_node_cost"]
+                else:
+                    node_cost += result["cost"]
+
                 result["billed_date"] = pd.to_datetime(
                     result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
@@ -174,7 +184,7 @@ class CostManager(BaseManager):
                                 cluster_metric.get("region", "Unknown")
                             ),
                             "usage_quantity": result.get("usage_quantity", 0),
-                            "usage_type": result["metric"]["type"],
+                            "usage_type": usage_type,
                             "usage_unit": result.get("usage_unit"),
                             "additional_info": additional_info,
                             "tags": result.get("tags", {}),
@@ -216,9 +226,11 @@ class CostManager(BaseManager):
             "X-Scope-OrgID": service_account_id,
         }
 
-        type_info = result["metric"].get("type")
-        node = result["metric"].get("node")
-        if type_info == "Total Node Cost":
+        usage_type = result["metric"].get("type")
+        if usage_type == "total":
+            additional_info["Total"] = result["metric"].get("node")
+
+        if node := result["metric"].get("node", "PVs"):
             additional_info["Node"] = node
 
         if namespace := result["metric"].get("namespace"):
