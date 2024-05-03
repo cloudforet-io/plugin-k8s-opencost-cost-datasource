@@ -74,7 +74,7 @@ class CostManager(BaseManager):
             prometheus_query_range_endpoint = (
                 f"{secret_data['mimir_endpoint']}/api/v1/query_range"
             )
-            prometheus_query_range_response = self.mimir_connector.get_promql_response(
+            total_cluster_cost_wo_idle = self.mimir_connector.get_promql_response(
                 prometheus_query_range_endpoint, start, service_account_id, secret_data
             )
 
@@ -83,13 +83,13 @@ class CostManager(BaseManager):
                 prometheus_query_endpoint, service_account_id, secret_data
             )
 
-            if prometheus_query_range_response:
-                prometheus_query_range_response_stream = (
-                    self.mimir_connector.get_cost_data(prometheus_query_range_response)
+            if total_cluster_cost_wo_idle:
+                total_cluster_cost_wo_idle_stream = self.mimir_connector.get_cost_data(
+                    total_cluster_cost_wo_idle
                 )
 
                 yield from self._process_response_stream(
-                    prometheus_query_range_response_stream,
+                    total_cluster_cost_wo_idle_stream,
                     cluster_info,
                     service_account_id,
                 )
@@ -133,19 +133,19 @@ class CostManager(BaseManager):
 
     def _process_response_stream(
         self,
-        prometheus_query_range_response_stream: Generator,
+        total_cluster_cost_wo_idle_stream: Generator,
         cluster_info: dict,
         service_account_id: str,
     ) -> Generator[dict, None, None]:
-        for prometheus_query_range_results in prometheus_query_range_response_stream:
+        for total_cluster_cost_wo_idle_results in total_cluster_cost_wo_idle_stream:
             yield self._make_cost_data(
-                prometheus_query_range_results, cluster_info, service_account_id
+                total_cluster_cost_wo_idle_results, cluster_info, service_account_id
             )
         yield {"results": []}
 
     def _make_cost_data(
         self,
-        prometheus_query_range_results: List[dict],
+        total_cluster_cost_wo_idle_results: List[dict],
         cluster_info: dict,
         x_scope_orgid: str,
     ) -> dict:
@@ -153,40 +153,42 @@ class CostManager(BaseManager):
             cluster_info.get("data", {}).get("result", [])[0].get("metric", {})
         )
         costs_data = []
-        for prometheus_query_range_result in prometheus_query_range_results:
-            for i in range(len(prometheus_query_range_result["values"])):
+        for total_cluster_cost_wo_idle_result in total_cluster_cost_wo_idle_results:
+            for i in range(len(total_cluster_cost_wo_idle_result["values"])):
                 data = {}
-                prometheus_query_range_result["cost"] = float(
-                    prometheus_query_range_result["values"][i][1]
+                total_cluster_cost_wo_idle_result["cost"] = float(
+                    total_cluster_cost_wo_idle_result["values"][i][1]
                 )
-                prometheus_query_range_result["billed_date"] = pd.to_datetime(
-                    prometheus_query_range_result["values"][i][0], unit="s"
+                total_cluster_cost_wo_idle_result["billed_date"] = pd.to_datetime(
+                    total_cluster_cost_wo_idle_result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
 
                 additional_info = self._make_additional_info(
-                    prometheus_query_range_result, x_scope_orgid
+                    total_cluster_cost_wo_idle_result, x_scope_orgid
                 )
                 try:
                     data.update(
                         {
-                            "cost": prometheus_query_range_result.get("cost"),
-                            "billed_date": prometheus_query_range_result["billed_date"],
-                            "product": prometheus_query_range_result.get("product"),
+                            "cost": total_cluster_cost_wo_idle_result.get("cost"),
+                            "billed_date": total_cluster_cost_wo_idle_result[
+                                "billed_date"
+                            ],
+                            "product": total_cluster_cost_wo_idle_result.get("product"),
                             "provider": cluster_metric.get("provider", "kubernetes"),
                             "region_code": self._get_region_code(
                                 cluster_metric.get("region", "Unknown")
                             ),
-                            "usage_quantity": prometheus_query_range_result.get(
+                            "usage_quantity": total_cluster_cost_wo_idle_result.get(
                                 "usage_quantity", 0
                             ),
-                            "usage_type": prometheus_query_range_result["metric"][
+                            "usage_type": total_cluster_cost_wo_idle_result["metric"][
                                 "type"
                             ],
-                            "usage_unit": prometheus_query_range_result.get(
+                            "usage_unit": total_cluster_cost_wo_idle_result.get(
                                 "usage_unit"
                             ),
                             "additional_info": additional_info,
-                            "tags": prometheus_query_range_result.get("tags", {}),
+                            "tags": total_cluster_cost_wo_idle_result.get("tags", {}),
                         }
                     )
                 except Exception as e:
