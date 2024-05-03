@@ -154,31 +154,22 @@ class CostManager(BaseManager):
             cluster_info.get("data", {}).get("result", [])[0].get("metric", {})
         )
         costs_data = []
-        total_node_cost = 0.0
-        node_cost = 0.0
         for result in results:
             for i in range(len(result["values"])):
                 data = {}
                 result["cost"] = float(result["values"][i][1])
-
-                usage_type = result["metric"].get("type")
-                if usage_type == "total":
-                    result["total_node_cost"] = float(result["values"][i][1])
-                    total_node_cost += result["total_node_cost"]
-                else:
-                    node_cost += result["cost"]
-
                 result["billed_date"] = pd.to_datetime(
                     result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
 
+                usage_type = result["metric"].get("type")
                 additional_info = self._make_additional_info(result, x_scope_orgid)
                 try:
                     data.update(
                         {
                             "cost": result.get("cost"),
                             "billed_date": result["billed_date"],
-                            "product": result.get("product"),
+                            "product": cluster_metric.get("provisioner", "kubernetes"),
                             "provider": cluster_metric.get("provider", "kubernetes"),
                             "region_code": self._get_region_code(
                                 cluster_metric.get("region", "Unknown")
@@ -226,23 +217,19 @@ class CostManager(BaseManager):
             "X-Scope-OrgID": service_account_id,
         }
 
-        usage_type = result["metric"].get("type")
-        if usage_type == "total":
-            additional_info["Total"] = result["metric"].get("node")
-
-        if node := result["metric"].get("node", "PVs"):
+        if node := result["metric"].get("node", "Persistent Volumes"):
             additional_info["Node"] = node
 
-        if namespace := result["metric"].get("namespace"):
+        if namespace := result["metric"].get("namespace", "__idle__ + Unmounted PVs"):
             additional_info["Namespace"] = namespace
 
-        if pod := result["metric"].get("pod"):
+        if pod := result["metric"].get("pod", "__idle__ + Unmounted PVs"):
             additional_info["Pod"] = pod
 
-        if container := result["metric"].get("container"):
+        if container := result["metric"].get("container", "__idle__ + Unmounted PVs"):
             additional_info["Container"] = container
 
-        if pv := result["metric"].get("persistentvolume"):
+        if pv := result["metric"].get("persistentvolume", "__idle__ + Unmounted PVs"):
             additional_info["PV"] = pv
 
         return additional_info
