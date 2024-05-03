@@ -54,7 +54,7 @@ class MimirConnector(BaseConnector):
         prometheus_query_range_endpoint: str,
         start: str,
         service_account_id: str,
-        secret_data: dict,
+        promql: str,
     ) -> Union[List[dict], None]:
         start_unix_timestamp, end_unix_timestamp = self._get_unix_timestamp(start)
 
@@ -68,7 +68,7 @@ class MimirConnector(BaseConnector):
                 prometheus_query_range_endpoint,
                 headers=self.mimir_headers,
                 params={
-                    "query": secret_data["promql"],
+                    "query": promql,
                     "start": start_unix_timestamp,
                     "end": end_unix_timestamp,
                     "step": "1d",

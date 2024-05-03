@@ -75,7 +75,10 @@ class CostManager(BaseManager):
                 f"{secret_data['mimir_endpoint']}/api/v1/query_range"
             )
             total_cluster_cost_wo_idle = self.mimir_connector.get_promql_response(
-                prometheus_query_range_endpoint, start, service_account_id, secret_data
+                prometheus_query_range_endpoint,
+                start,
+                service_account_id,
+                secret_data["total_cluster_cost_wo_idle_query"],
             )
 
             prometheus_query_endpoint = f"{secret_data['mimir_endpoint']}/api/v1/query"
