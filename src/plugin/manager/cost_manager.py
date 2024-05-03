@@ -71,20 +71,23 @@ class CostManager(BaseManager):
         self._check_resource_group(domain_id, options)
 
         try:
-            promql_query_range = f"{secret_data['mimir_endpoint']}/api/v1/query_range"
+            prometheus_query_range_endpoint = (
+                f"{secret_data['mimir_endpoint']}/api/v1/query_range"
+            )
             promql_response = self.mimir_connector.get_promql_response(
-                promql_query_range, start, service_account_id, secret_data
+                prometheus_query_range_endpoint, start, service_account_id, secret_data
             )
 
+            prometheus_query_endpoint = f"{secret_data['mimir_endpoint']}/api/v1/query"
             cluster_info = self.mimir_connector.get_kubecost_cluster_info(
-                service_account_id, secret_data
+                prometheus_query_endpoint, service_account_id, secret_data
             )
 
             if promql_response:
                 response_stream = self.mimir_connector.get_cost_data(promql_response)
 
                 yield from self._process_response_stream(
-                    cluster_info, response_stream, service_account_id
+                    response_stream, cluster_info, service_account_id
                 )
             else:
                 _LOGGER.error(
@@ -125,14 +128,20 @@ class CostManager(BaseManager):
             yield {"results": []}
 
     def _process_response_stream(
-        self, cluster_info: dict, response_stream: Generator, service_account_id: str
+        self,
+        response_stream: Generator,
+        cluster_info: dict,
+        service_account_id: str,
     ) -> Generator[dict, None, None]:
         for results in response_stream:
-            yield self._make_cost_data(cluster_info, results, service_account_id)
+            yield self._make_cost_data(results, cluster_info, service_account_id)
         yield {"results": []}
 
     def _make_cost_data(
-        self, cluster_info: dict, results: List[dict], x_scope_orgid: str
+        self,
+        results: List[dict],
+        cluster_info: dict,
+        x_scope_orgid: str,
     ) -> dict:
         cluster_metric = (
             cluster_info.get("data", {}).get("result", [])[0].get("metric", {})
@@ -202,6 +211,9 @@ class CostManager(BaseManager):
             "Pod": result["metric"].get("pod", ""),
             "X-Scope-OrgID": service_account_id,
         }
+
+        if container := result["metric"].get("container"):
+            additional_info["Container"] = container
 
         if pv := result["metric"].get("persistentvolume"):
             additional_info["PV"] = pv
