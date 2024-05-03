@@ -216,9 +216,12 @@ class CostManager(BaseManager):
             "X-Scope-OrgID": service_account_id,
         }
 
-        type_info = result["metric"].get("type")
-        node = result["metric"].get("node")
-        if type_info == "Total Node Cost":
+        # type_info = result["metric"].get("type")
+        # node = result["metric"].get("node")
+        # if type_info == "Total Node Cost":
+        #     additional_info["Node"] = node
+
+        if node := result["metric"].get("node"):
             additional_info["Node"] = node
 
         if namespace := result["metric"].get("namespace"):
