@@ -51,7 +51,7 @@ class MimirConnector(BaseConnector):
 
     def get_promql_response(
         self,
-        promql_query_range: str,
+        prometheus_query_range_endpoint: str,
         start: str,
         service_account_id: str,
         secret_data: dict,
@@ -65,7 +65,7 @@ class MimirConnector(BaseConnector):
 
         try:
             response = requests.get(
-                promql_query_range,
+                prometheus_query_range_endpoint,
                 headers=self.mimir_headers,
                 params={
                     "query": secret_data["promql"],
@@ -99,6 +99,7 @@ class MimirConnector(BaseConnector):
 
     def get_kubecost_cluster_info(
         self,
+        prometheus_query_endpoint: str,
         service_account_id: str,
         secret_data: dict,
     ) -> dict:
@@ -106,10 +107,9 @@ class MimirConnector(BaseConnector):
             "Content-Type": "application/json",
             "X-Scope-OrgID": service_account_id,
         }
-        cluster_info_query = f"{secret_data['mimir_endpoint']}/api/v1/query"
         try:
             response = requests.get(
-                cluster_info_query,
+                prometheus_query_endpoint,
                 headers=self.mimir_headers,
                 params={
                     "query": secret_data["cluster_info_query"],
