@@ -162,7 +162,8 @@ class CostManager(BaseManager):
                     result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
 
-                usage_type = result["metric"].get("type")
+                if type := result["metric"].get("type"):
+                    data["usage_type"] = type
                 additional_info = self._make_additional_info(result, x_scope_orgid)
                 try:
                     data.update(
@@ -175,7 +176,6 @@ class CostManager(BaseManager):
                                 cluster_metric.get("region", "Unknown")
                             ),
                             "usage_quantity": result.get("usage_quantity", 0),
-                            "usage_type": usage_type,
                             "usage_unit": result.get("usage_unit"),
                             "additional_info": additional_info,
                             "tags": result.get("tags", {}),
