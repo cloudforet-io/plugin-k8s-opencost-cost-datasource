@@ -74,11 +74,11 @@ class CostManager(BaseManager):
             prometheus_query_range_endpoint = (
                 f"{secret_data['mimir_endpoint']}/api/v1/query_range"
             )
-            total_cluster_cost_wo_idle = self.mimir_connector.get_promql_response(
+            promql_response = self.mimir_connector.get_promql_response(
                 prometheus_query_range_endpoint,
                 start,
                 service_account_id,
-                secret_data["total_cluster_cost_wo_idle_query"],
+                secret_data["promql"],
             )
 
             prometheus_query_endpoint = f"{secret_data['mimir_endpoint']}/api/v1/query"
@@ -86,13 +86,13 @@ class CostManager(BaseManager):
                 prometheus_query_endpoint, service_account_id, secret_data
             )
 
-            if total_cluster_cost_wo_idle:
-                total_cluster_cost_wo_idle_stream = self.mimir_connector.get_cost_data(
-                    total_cluster_cost_wo_idle
+            if promql_response:
+                promql_response_stream = self.mimir_connector.get_cost_data(
+                    promql_response
                 )
 
                 yield from self._process_response_stream(
-                    total_cluster_cost_wo_idle_stream,
+                    promql_response_stream,
                     cluster_info,
                     service_account_id,
                 )
@@ -136,19 +136,17 @@ class CostManager(BaseManager):
 
     def _process_response_stream(
         self,
-        total_cluster_cost_wo_idle_stream: Generator,
+        promql_response_stream: Generator,
         cluster_info: dict,
         service_account_id: str,
     ) -> Generator[dict, None, None]:
-        for total_cluster_cost_wo_idle_results in total_cluster_cost_wo_idle_stream:
-            yield self._make_cost_data(
-                total_cluster_cost_wo_idle_results, cluster_info, service_account_id
-            )
+        for results in promql_response_stream:
+            yield self._make_cost_data(results, cluster_info, service_account_id)
         yield {"results": []}
 
     def _make_cost_data(
         self,
-        total_cluster_cost_wo_idle_results: List[dict],
+        results: List[dict],
         cluster_info: dict,
         x_scope_orgid: str,
     ) -> dict:
@@ -156,42 +154,30 @@ class CostManager(BaseManager):
             cluster_info.get("data", {}).get("result", [])[0].get("metric", {})
         )
         costs_data = []
-        for total_cluster_cost_wo_idle_result in total_cluster_cost_wo_idle_results:
-            for i in range(len(total_cluster_cost_wo_idle_result["values"])):
+        for result in results:
+            for i in range(len(result["values"])):
                 data = {}
-                total_cluster_cost_wo_idle_result["cost"] = float(
-                    total_cluster_cost_wo_idle_result["values"][i][1]
-                )
-                total_cluster_cost_wo_idle_result["billed_date"] = pd.to_datetime(
-                    total_cluster_cost_wo_idle_result["values"][i][0], unit="s"
+                result["cost"] = float(result["values"][i][1])
+                result["billed_date"] = pd.to_datetime(
+                    result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
 
-                additional_info = self._make_additional_info(
-                    total_cluster_cost_wo_idle_result, x_scope_orgid
-                )
+                additional_info = self._make_additional_info(result, x_scope_orgid)
                 try:
                     data.update(
                         {
-                            "cost": total_cluster_cost_wo_idle_result.get("cost"),
-                            "billed_date": total_cluster_cost_wo_idle_result[
-                                "billed_date"
-                            ],
-                            "product": total_cluster_cost_wo_idle_result.get("product"),
+                            "cost": result.get("cost"),
+                            "billed_date": result["billed_date"],
+                            "product": result.get("product"),
                             "provider": cluster_metric.get("provider", "kubernetes"),
                             "region_code": self._get_region_code(
                                 cluster_metric.get("region", "Unknown")
                             ),
-                            "usage_quantity": total_cluster_cost_wo_idle_result.get(
-                                "usage_quantity", 0
-                            ),
-                            "usage_type": total_cluster_cost_wo_idle_result["metric"][
-                                "type"
-                            ],
-                            "usage_unit": total_cluster_cost_wo_idle_result.get(
-                                "usage_unit"
-                            ),
+                            "usage_quantity": result.get("usage_quantity", 0),
+                            "usage_type": result["metric"]["type"],
+                            "usage_unit": result.get("usage_unit"),
                             "additional_info": additional_info,
-                            "tags": total_cluster_cost_wo_idle_result.get("tags", {}),
+                            "tags": result.get("tags", {}),
                         }
                     )
                 except Exception as e:
@@ -227,11 +213,17 @@ class CostManager(BaseManager):
     def _make_additional_info(result: dict, service_account_id: str) -> dict:
         additional_info = {
             "Cluster": result["metric"].get("cluster", ""),
-            "Node": result["metric"].get("node", "PVs"),
-            "Namespace": result["metric"].get("namespace", ""),
-            "Pod": result["metric"].get("pod", ""),
             "X-Scope-OrgID": service_account_id,
         }
+
+        if node := result["metric"].get("node"):
+            additional_info["Node"] = node
+
+        if namespace := result["metric"].get("namespace"):
+            additional_info["Namespace"] = namespace
+
+        if pod := result["metric"].get("pod"):
+            additional_info["Pod"] = pod
 
         if container := result["metric"].get("container"):
             additional_info["Container"] = container
