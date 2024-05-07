@@ -171,7 +171,7 @@ class CostManager(BaseManager):
                             "cost": result.get("cost"),
                             "billed_date": result["billed_date"],
                             "product": cluster_metric.get("provisioner", "kubernetes"),
-                            "provider": cluster_metric.get("provider", "kubernetes"),
+                            "provider": "kubernetes",
                             "region_code": self._get_region_code(
                                 cluster_metric.get("region", "Unknown")
                             ),
