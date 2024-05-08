@@ -74,6 +74,7 @@ class CostManager(BaseManager):
             prometheus_query_range_endpoint = (
                 f"{secret_data['mimir_endpoint']}/api/v1/query_range"
             )
+
             promql_response = self.mimir_connector.get_promql_response(
                 prometheus_query_range_endpoint,
                 start,
@@ -92,9 +93,9 @@ class CostManager(BaseManager):
                 )
 
                 yield from self._process_response_stream(
-                    promql_response_stream,
                     cluster_info,
                     service_account_id,
+                    promql_response_stream=promql_response_stream,
                 )
             else:
                 _LOGGER.error(
@@ -136,12 +137,13 @@ class CostManager(BaseManager):
 
     def _process_response_stream(
         self,
-        promql_response_stream: Generator,
         cluster_info: dict,
         service_account_id: str,
+        promql_response_stream: Generator,
     ) -> Generator[dict, None, None]:
         for results in promql_response_stream:
             yield self._make_cost_data(results, cluster_info, service_account_id)
+
         yield {"results": []}
 
     def _make_cost_data(
@@ -156,15 +158,17 @@ class CostManager(BaseManager):
         costs_data = []
         for result in results:
             for i in range(len(result["values"])):
+                additional_info = self._make_additional_info(result, x_scope_orgid)
+
                 data = {}
+                if usage_type := result["metric"].get("type"):
+                    data["usage_type"] = usage_type
+
                 result["cost"] = float(result["values"][i][1])
                 result["billed_date"] = pd.to_datetime(
                     result["values"][i][0], unit="s"
                 ).strftime("%Y-%m-%d")
 
-                if type := result["metric"].get("type"):
-                    data["usage_type"] = type
-                additional_info = self._make_additional_info(result, x_scope_orgid)
                 try:
                     data.update(
                         {
@@ -213,23 +217,23 @@ class CostManager(BaseManager):
     @staticmethod
     def _make_additional_info(result: dict, service_account_id: str) -> dict:
         additional_info = {
-            "Cluster": result["metric"].get("cluster", ""),
+            "Cluster": result["metric"].get("cluster", "__idle__"),
             "X-Scope-OrgID": service_account_id,
         }
 
-        if node := result["metric"].get("node", "Persistent Volumes"):
+        if node := result["metric"].get("node", "__idle__"):
             additional_info["Node"] = node
 
-        if namespace := result["metric"].get("namespace", "__idle__ + Unmounted PVs"):
+        if namespace := result["metric"].get("namespace", "__idle__"):
             additional_info["Namespace"] = namespace
 
-        if pod := result["metric"].get("pod", "__idle__ + Unmounted PVs"):
+        if pod := result["metric"].get("pod", "__idle__"):
             additional_info["Pod"] = pod
 
-        if container := result["metric"].get("container", "__idle__ + Unmounted PVs"):
+        if container := result["metric"].get("container", "__idle__"):
             additional_info["Container"] = container
 
-        if pv := result["metric"].get("persistentvolume", "__idle__ + Unmounted PVs"):
+        if pv := result["metric"].get("persistentvolume", ""):
             additional_info["PV"] = pv
 
         return additional_info
