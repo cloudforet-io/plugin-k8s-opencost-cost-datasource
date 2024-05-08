@@ -216,23 +216,26 @@ class CostManager(BaseManager):
 
     @staticmethod
     def _make_additional_info(result: dict, service_account_id: str) -> dict:
-        additional_info = {
-            "X-Scope-OrgID": service_account_id,
-        }
+        additional_info = {}
 
-        if cluster := result["metric"].get("cluster", "__idle__"):
+        if result["metric"].get("type") != "idle":
+            additional_info = {
+                "X-Scope-OrgID": service_account_id,
+            }
+
+        if cluster := result["metric"].get("cluster"):
             additional_info["Cluster"] = cluster
 
-        if node := result["metric"].get("node", "__idle__"):
+        if node := result["metric"].get("node"):
             additional_info["Node"] = node
 
-        if namespace := result["metric"].get("namespace", "__idle__"):
+        if namespace := result["metric"].get("namespace"):
             additional_info["Namespace"] = namespace
 
-        if pod := result["metric"].get("pod", "__idle__"):
+        if pod := result["metric"].get("pod"):
             additional_info["Pod"] = pod
 
-        if container := result["metric"].get("container", "__idle__"):
+        if container := result["metric"].get("container"):
             additional_info["Container"] = container
 
         if pv := result["metric"].get("persistentvolume"):
