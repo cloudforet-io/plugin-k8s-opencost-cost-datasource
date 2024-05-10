@@ -161,8 +161,10 @@ class CostManager(BaseManager):
                 additional_info = self._make_additional_info(result, x_scope_orgid)
 
                 data = {}
-                if usage_type := result["metric"].get("type"):
-                    data["usage_type"] = usage_type
+                idle = result["metric"].get("type") == "idle"
+                load_balancer = result["metric"].get("type") == "Load Balancer"
+                if (not idle) and (not load_balancer):
+                    data["usage_type"] = result["metric"].get("type")
 
                 result["cost"] = float(result["values"][i][1])
                 result["billed_date"] = pd.to_datetime(
@@ -226,17 +228,23 @@ class CostManager(BaseManager):
         if node := result["metric"].get("node"):
             additional_info["Node"] = node
 
-        if namespace := result["metric"].get("namespace", "__idle__"):
+        if namespace := result["metric"].get("namespace"):
             additional_info["Namespace"] = namespace
 
-        if pod := result["metric"].get("pod", "__idle__"):
+        if pod := result["metric"].get("pod"):
             additional_info["Pod"] = pod
 
-        if container := result["metric"].get("container", "__idle__"):
+        if container := result["metric"].get("container"):
             additional_info["Container"] = container
 
         if pv := result["metric"].get("persistentvolume"):
             additional_info["PV"] = pv
+
+        if service := result["metric"].get("service_name"):
+            additional_info["Load Balancer"] = service
+
+        if result["metric"].get("type") == "idle":
+            additional_info["Idle"] = "__idle__"
 
         return additional_info
 
