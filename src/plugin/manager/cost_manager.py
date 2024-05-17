@@ -225,7 +225,7 @@ class CostManager(BaseManager):
         if cluster := result["metric"].get("cluster"):
             additional_info["Cluster"] = cluster
 
-        if node := result["metric"].get("node"):
+        if node := result["metric"].get("node", "PVs"):
             additional_info["Node"] = node
 
         if namespace := result["metric"].get("namespace"):
@@ -237,7 +237,7 @@ class CostManager(BaseManager):
         if container := result["metric"].get("container"):
             additional_info["Container"] = container
 
-        if pv := result["metric"].get("persistentvolume"):
+        if pv := result["metric"].get("persistentvolume", "Nodes"):
             additional_info["PV"] = pv
 
         if service := result["metric"].get("service_name"):
