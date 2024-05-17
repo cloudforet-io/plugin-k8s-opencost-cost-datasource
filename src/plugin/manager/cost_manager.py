@@ -84,7 +84,7 @@ class CostManager(BaseManager):
 
             prometheus_query_endpoint = f"{secret_data['mimir_endpoint']}/api/v1/query"
             cluster_info = self.mimir_connector.get_kubecost_cluster_info(
-                prometheus_query_endpoint, service_account_id, secret_data
+                prometheus_query_endpoint, start, service_account_id, secret_data
             )
 
             if promql_response:
@@ -153,7 +153,7 @@ class CostManager(BaseManager):
         x_scope_orgid: str,
     ) -> dict:
         cluster_metric = (
-            cluster_info.get("data", {}).get("result", [])[0].get("metric", {})
+            cluster_info.get("data", {}).get("result", [{}])[0].get("metric", {})
         )
         costs_data = []
         for result in results:

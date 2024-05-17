@@ -100,6 +100,7 @@ class MimirConnector(BaseConnector):
     def get_kubecost_cluster_info(
         self,
         prometheus_query_endpoint: str,
+        start: str,
         service_account_id: str,
         secret_data: dict,
     ) -> dict:
@@ -118,7 +119,16 @@ class MimirConnector(BaseConnector):
 
             response.raise_for_status()
 
-            result = response.json()
+            result = response.json().get("data", {}).get("result", [{}])
+
+            if result:
+                result = response.json()
+            else:
+                result = {}
+                _LOGGER.debug(
+                    f"[get_kubecost_cluster_info] Agent has no metric on your start date: {start}"
+                )
+
             return result
         except requests.HTTPError as http_err:
             _LOGGER.error(
