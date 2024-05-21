@@ -15,6 +15,7 @@ on:
         - "linux/amd64"
         - "linux/amd64,linux/arm64"
 
+
 env:
   VERSION: ${{ github.event.inputs.version }}
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
