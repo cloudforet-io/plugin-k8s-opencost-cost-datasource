@@ -225,26 +225,28 @@ class CostManager(BaseManager):
         if cluster := result["metric"].get("cluster"):
             additional_info["Cluster"] = cluster
 
-        if node := result["metric"].get("node", "PVs"):
+        if node := result["metric"].get("node", "Cluster - Node"):
             additional_info["Node"] = node
 
-        if namespace := result["metric"].get("namespace"):
+        if namespace := result["metric"].get("namespace", "Cluster - Namespace"):
             additional_info["Namespace"] = namespace
 
-        if pod := result["metric"].get("pod"):
+        if pod := result["metric"].get("pod", "Cluster - Pod"):
             additional_info["Pod"] = pod
 
-        if container := result["metric"].get("container"):
+        if container := result["metric"].get("container", "Cluster - Container"):
             additional_info["Container"] = container
 
-        if pv := result["metric"].get("persistentvolume", "Nodes"):
+        if pv := result["metric"].get("persistentvolume", "Cluster - PV"):
             additional_info["PV"] = pv
 
-        if service := result["metric"].get("service_name"):
+        if service := result["metric"].get("service_name", "Cluster - Load Balancer"):
             additional_info["Load Balancer"] = service
 
         if result["metric"].get("type") == "idle":
             additional_info["Idle"] = "__idle__"
+        else:
+            additional_info["Idle"] = "Cluster - Idle"
 
         return additional_info
 
